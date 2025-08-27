@@ -1,0 +1,45 @@
+# Real Estate Crawler Configuration
+# Edit URLs and settings according to your requirements
+
+sites:
+  99acres:
+    urls:
+      - "https://www.99acres.com/search/property/buy/residential-all/delhi-ncr-all"
+      - "https://www.99acres.com/search/property/rent/residential-all/delhi-ncr-all"
+    max_pages: 10
+    use_selenium: true
+    
+  magicbricks:
+    urls:
+      - "https://www.magicbricks.com/property-for-sale/residential-real-estate?proptype=Multistorey-Apartment,Builder-Floor,Penthouse,Studio-Apartment&cityName=New-Delhi"
+      - "https://www.magicbricks.com/property-for-rent/residential-real-estate?proptype=Multistorey-Apartment,Builder-Floor,Penthouse,Studio-Apartment&cityName=New-Delhi"
+    max_pages: 10
+    use_selenium: true
+    
+  nobroker:
+    urls:
+      - "https://www.nobroker.in/property/sale/delhi/"
+      - "https://www.nobroker.in/property/rent/delhi/"
+    max_pages: 10
+    use_selenium: true
+
+# Output configuration
+output:
+  directory: "./output"
+  logs_directory: "./logs"
+
+# Crawler behavior settings
+crawler:
+  delay_seconds: 2.0  # Polite delay between requests
+  timeout_seconds: 30
+  user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
+# Column preferences (actual columns will be auto-detected)
+preferred_columns:
+  - source
+  - title
+  - price_or_rent
+  - area_value
+  - unit_type
+  - locality
+  - city
