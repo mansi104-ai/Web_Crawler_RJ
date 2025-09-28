@@ -878,6 +878,26 @@ class NoBrokerScraper:
         except Exception:
             return False
 
+    def _clean_building_name_and_location(self, raw_name: str):
+        """
+        Clean raw building name like:
+        '1 RK Apartment In Aipl Joy Square For Sale In Sector 63'
+        → returns ('Apartment in Aipl Joy Square', 'Sector 63')
+        """
+        if not raw_name:
+            return "", ""
+        
+        # Extract location (Sector … or similar)
+        loc_match = re.search(r'(Sector\s*\d+)', raw_name, re.IGNORECASE)
+        location = loc_match.group(1).title() if loc_match else ""
+        
+        # Remove RK/BHK prefix
+        cleaned = re.sub(r'^\d+\s*(RK|BHK)\s*', '', raw_name, flags=re.IGNORECASE)
+        # Remove trailing "For Sale …"
+        cleaned = re.sub(r'\s*For Sale.*', '', cleaned, flags=re.IGNORECASE)
+        
+        return cleaned.strip(), location
+
     def extract_all_listings(self) -> List[Dict]:
         """Main method to extract all property listings with improved logic"""
         try:
@@ -894,7 +914,6 @@ class NoBrokerScraper:
                 
                 logging.info(f"Processing page {scroll_count + 1}/{self.max_scrolls}...")
                 
-                # Find property cards using improved method
                 property_cards = self.find_property_cards_improved()
                 
                 if not property_cards:
@@ -915,30 +934,23 @@ class NoBrokerScraper:
                 
                 logging.info(f"Found {new_cards_count} property cards on page {scroll_count + 1}")
                 
-                # Process each card
                 successful_extractions = 0
                 for i, card_element in enumerate(property_cards):
                     if len(all_extracted_data) >= self.max_listings:
                         break
                     
                     try:
-                        logging.info(f"Processing card {i+1}/{new_cards_count}...")
-                        
-                        # Extract comprehensive data
                         listing_data = self.extract_comprehensive_card_data(card_element)
                         
                         if listing_data:
-                            # Convert to dictionary for DataFrame
+                            # ✅ Only keep 1 RK / 1 BHK
+                            apt_type = (listing_data.apartment_type or "").strip().upper()
+                            if apt_type not in ["1 BHK", "1 RK"]:
+                                continue
+                            
                             listing_dict = self._listing_data_to_dict(listing_data, len(all_extracted_data) + 1)
                             all_extracted_data.append(listing_dict)
                             successful_extractions += 1
-                            
-                            # Log progress
-                            name = listing_data.building_name[:30] if listing_data.building_name else "Unknown"
-                            price = listing_data.price[:20] if listing_data.price else "No price"
-                            bhk = listing_data.apartment_type or "Unknown type"
-                            
-                            logging.info(f"✓ Extracted #{len(all_extracted_data)}: {name} | {price} | {bhk}")
                         else:
                             logging.debug(f"✗ Failed to extract data from card {i+1}")
                     
@@ -946,20 +958,14 @@ class NoBrokerScraper:
                         logging.debug(f"Error processing card {i+1}: {e}")
                         continue
                     
-                    # Small delay between cards
                     time.sleep(random.uniform(0.2, 0.5))
                 
                 logging.info(f"Page {scroll_count + 1} completed: {successful_extractions}/{new_cards_count} cards extracted")
                 
-                # Scroll to next section if needed
                 if len(all_extracted_data) < self.max_listings and scroll_count < self.max_scrolls - 1:
                     self._smart_scroll_and_wait()
                     
                 scroll_count += 1
-                
-                # Progress update
-                progress = (len(all_extracted_data) / self.max_listings) * 100
-                logging.info(f"Overall progress: {len(all_extracted_data)}/{self.max_listings} ({progress:.1f}%)")
             
             logging.info(f"Extraction completed: {len(all_extracted_data)} listings extracted in {scroll_count} pages")
             return all_extracted_data
@@ -996,7 +1002,10 @@ class NoBrokerScraper:
             'nearby_places_count': len(listing_data.nearby_places),
             'nearby_places': ', '.join(listing_data.nearby_places) if listing_data.nearby_places else '',
         }
-        
+        cleaned_name, location = self._clean_building_name_and_location(listing_data.building_name)
+        if cleaned_name:
+            data_dict['building_name'] = cleaned_name
+        data_dict['location'] = location
         # Add separate columns for first 5 nearby places
         for i in range(5):
             place_key = f'nearby_place_{i+1}'
@@ -1537,16 +1546,16 @@ def main():
         config.read(config_path)
     
     # URL options with more variety
-    default_url = "hhttps://www.nobroker.in/1bhk-flats-for-sale-in-gurgaon-gurgaon"
+    default_url = "hhttps://www.nobroker.in/1bhk-1rhk-flats-for-sale-in-gurgaon-gurgaon"
     url_options = [
-        "https://www.nobroker.in/property/sale/mumbai",
-        "https://www.nobroker.in/property/sale/pune", 
-        "https://www.nobroker.in/property/sale/bangalore",
-        "https://www.nobroker.in/property/sale/delhi",
-        "https://www.nobroker.in/property/sale/noida",
         "https://www.nobroker.in/property/sale/gurgaon",
-        "https://www.nobroker.in/property/rent/mumbai",
-        "https://www.nobroker.in/property/rent/bangalore"
+        # "https://www.nobroker.in/property/sale/pune", 
+        # "https://www.nobroker.in/property/sale/bangalore",
+        # "https://www.nobroker.in/property/sale/delhi",
+        # "https://www.nobroker.in/property/sale/noida",
+        # "https://www.nobroker.in/property/sale/gurgaon",
+        # "https://www.nobroker.in/property/rent/mumbai",
+        # "https://www.nobroker.in/property/rent/bangalore"
     ]
     
     print(f"\n🎯 Default URL: {default_url}")

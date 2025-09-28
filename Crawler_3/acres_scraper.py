@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """
-Enhanced 99acres listing card extractor with improved data extraction
-Fixed major issues with card detection and data parsing for 99acres.com
+Enhanced 99acres.com listing card extractor with comprehensive data extraction
 """
 
 import os
@@ -10,17 +9,6 @@ import logging
 import random
 import pandas as pd
 from datetime import datetime
-import cv2
-import numpy as np
-from PIL import Image
-import io
-import base64
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.common.action_chains import ActionChains
-from selenium.webdriver.common.keys import Keys
 import re
 from bs4 import BeautifulSoup
 import json
@@ -35,7 +23,14 @@ from selenium.common.exceptions import (
 import undetected_chromedriver as uc
 from typing import List, Dict, Optional, Tuple
 import requests
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+
+# Add these imports
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.action_chains import ActionChains
+from selenium.webdriver.common.keys import Keys
 
 # Configuration constants
 DEFAULT_USER_AGENT = (
@@ -46,7 +41,9 @@ DEFAULT_USER_AGENT = (
 @dataclass
 class ListingData:
     """Structure for holding listing card data"""
+    listing_index: int = 0
     building_name: str = ""
+    developer_name: str = ""
     price: str = ""
     emi: str = ""
     buildup_area: str = ""
@@ -56,30 +53,30 @@ class ListingData:
     parking: str = ""
     floor: str = ""
     furnishing: str = ""
-    age: str = ""
-    nearby_places: List[str] = None
-    image_count: int = 0
-    image_urls: List[str] = None
-    links: List[Dict[str, str]] = None
+    property_age: str = ""
     broker_info: str = ""
     verification_status: str = ""
     possession_date: str = ""
-    additional_amenities: List[str] = None
-    project_name: str = ""  # Added for 99acres
-    
-    def __post_init__(self):
-        if self.nearby_places is None:
-            self.nearby_places = []
-        if self.image_urls is None:
-            self.image_urls = []
-        if self.links is None:
-            self.links = []
-        if self.additional_amenities is None:
-            self.additional_amenities = []
-
+    image_count: int = 0
+    image_urls: List[str] = field(default_factory=list)
+    nearby_places_count: int = 0
+    nearby_places: List[str] = field(default_factory=list)
+    links_count: int = 0
+    links_summary: str = ""
+    all_links: List[Dict] = field(default_factory=list)  # Store all links
+    amenities_count: int = 0
+    amenities: str = ""
+    location: str = ""
+    city: str = ""
+    property_id: str = ""
+    listing_url: str = ""
+    description: str = ""
+    features: List[str] = field(default_factory=list)
+    extraction_timestamp: str = ""
+    run_id: str = ""
 
 class Acres99Scraper:
-    """Improved scraper with better element detection and data extraction for 99acres.com"""
+    """Scraper for 99acres.com with comprehensive data extraction"""
 
     def __init__(self, config, run_id: str, start_ts: datetime):
         self.config = config
@@ -96,7 +93,7 @@ class Acres99Scraper:
         
         timestamp = self.start_ts.strftime("%Y%m%d_%H%M%S")
         self.final_output_path = os.path.join(
-            self.output_dir, f"99acres_improved_{self.run_id}_{timestamp}.xlsx"
+            self.output_dir, f"99acres_{self.run_id}_{timestamp}.xlsx"
         )
         
         self.extracted_data = []
@@ -152,16 +149,20 @@ class Acres99Scraper:
             raise
 
     def find_property_cards_improved(self) -> List:
-        """Improved method to find property cards using multiple strategies for 99acres"""
+        """Improved method to find property cards using multiple strategies"""
         cards = []
         
         # Strategy 1: Look for common 99acres card selectors
         card_selectors = [
             # 99acres specific selectors
-            '.srpTuple__tupleCard',  # Main card container
-            '.srpTuple',             # Alternative card class
-            '[class*="tupleCard"]',  # Fallback
-            '[class*="propertyCard"]',
+            '.srpTuple__tupleCard',  # Main card class
+            '.srpTuple',  # Alternative card class
+            '.tupleCard',  # Another possibility
+            '.projectTuple',  # For project cards
+            '.card',  # Generic card
+            '[class*="tuple"]',  # Any class containing "tuple"
+            '[data-testid*="card"]',  # Test ID based
+            '[data-testid*="tuple"]',  # Test ID based
             # Generic selectors
             'article',
             '.card-container',
@@ -203,7 +204,7 @@ class Acres99Scraper:
         return cards
 
     def _is_valid_property_card(self, element) -> bool:
-        """Check if element is a valid property card for 99acres"""
+        """Check if element is a valid property card"""
         try:
             # Must be visible
             if not element.is_displayed():
@@ -259,7 +260,7 @@ class Acres99Scraper:
             return str(random.randint(1000, 9999))
 
     def _find_cards_by_xpath(self) -> List:
-        """Find cards using XPath patterns for 99acres"""
+        """Find cards using XPath patterns"""
         cards = []
         
         xpath_patterns = [
@@ -267,7 +268,7 @@ class Acres99Scraper:
             "//div[contains(text(), '₹') and contains(text(), 'BHK')]",
             "//div[contains(text(), 'Lacs') or contains(text(), 'Crore')]",
             # Find elements with property-related attributes
-            "//div[contains(@class, 'tupleCard') or contains(@class, 'propertyCard')]",
+            "//div[contains(@class, 'card') or contains(@class, 'listing') or contains(@class, 'property')]",
             # Find clickable areas with property info
             "//div[@role='button' or @onclick][contains(text(), '₹') or contains(text(), 'BHK')]"
         ]
@@ -348,13 +349,13 @@ class Acres99Scraper:
             return element
 
     def _looks_like_card_container(self, element) -> bool:
-        """Check if element looks like a property card container for 99acres"""
+        """Check if element looks like a property card container"""
         try:
             class_name = (element.get_attribute("class") or "").lower()
             tag_name = element.tag_name.lower()
             
             # Check for card-like class names
-            card_indicators = ['card', 'tuple', 'property', 'item', 'result', 'tile']
+            card_indicators = ['card', 'listing', 'property', 'item', 'result', 'tile', 'tuple', 'srp']
             if any(indicator in class_name for indicator in card_indicators):
                 return True
             
@@ -381,7 +382,7 @@ class Acres99Scraper:
             return False
 
     def extract_comprehensive_card_data(self, card_element) -> Optional[ListingData]:
-        """Extract comprehensive data from a property card with improved selectors for 99acres"""
+        """Extract comprehensive data from a property card with improved selectors"""
         try:
             listing_data = ListingData()
             
@@ -399,14 +400,17 @@ class Acres99Scraper:
             # Extract images
             self._extract_image_data_improved(card_element, listing_data)
             
-            # Extract links
-            self._extract_links_improved(card_element, listing_data)
+            # Extract all links
+            self._extract_all_links_improved(card_element, listing_data)
             
             # Extract nearby places with better parsing
             self._extract_nearby_places_improved(card_element, listing_data, card_text)
             
             # Extract additional details
             self._extract_additional_details_improved(card_element, listing_data, card_text)
+            
+            # Extract features and description
+            self._extract_features_and_description(card_element, listing_data, card_text)
             
             # Validate extracted data
             if self._validate_listing_data(listing_data):
@@ -430,68 +434,112 @@ class Acres99Scraper:
             pass
 
     def _extract_basic_info_improved(self, card_element, listing_data: ListingData, card_text: str):
-        """Extract basic property information with improved parsing for 99acres"""
+        """Extract basic property information with improved parsing"""
         try:
-            # Building/Property name - try multiple strategies
+            # Extract listing URL first
+            try:
+                link_element = card_element.find_element(By.CSS_SELECTOR, "a[href*='/property/']")
+                listing_data.listing_url = link_element.get_attribute("href")
+                
+                # Extract property ID from URL
+                if listing_data.listing_url:
+                    prop_id_match = re.search(r'-spid-([A-Z0-9]+)', listing_data.listing_url)
+                    if prop_id_match:
+                        listing_data.property_id = prop_id_match.group(1)
+            except:
+                pass
+            
+            # Building/Property name - improved extraction
             name_found = False
             
-            # Strategy 1: Look for title elements (99acres specific)
-            title_selectors = [
-                ".srpTuple__propertyTitle",
-                ".srpTuple__propertyName",
-                ".property-title",
-                ".property-name",
-                "h1", "h2", "h3", "h4", ".title", "[class*='title']", 
-                "[class*='name']", "[class*='heading']", "[data-testid*='title']"
+            # Strategy 1: Look for specific 99acres selectors for building name
+            name_selectors = [
+                ".srpTuple__propertyName",  # 99acres specific
+                ".tuple__title",  # 99acres specific
+                ".projectTuple__projectName",  # 99acres specific
+                ".projectTuple__projectName a",  # 99acres specific
+                ".srpTuple__propertyName a",  # 99acres specific
+                "[class*='projectName'] a",  # 99acres specific
+                "[class*='propertyName'] a",  # 99acres specific
+                ".projectName",  # 99acres specific
+                ".propertyName",  # 99acres specific
+                "h2",  # General heading
+                ".title a",  # General title link
+                "[class*='title'] a"  # General title link
             ]
             
-            for selector in title_selectors:
+            for selector in name_selectors:
                 try:
                     elements = card_element.find_elements(By.CSS_SELECTOR, selector)
                     for elem in elements:
                         text = elem.text.strip()
-                        if text and len(text) > 3 and not text.isdigit():
-                            # Avoid common non-title texts
-                            avoid_texts = ['get owner details', 'contact', 'view', 'call', 'whatsapp']
-                            if not any(avoid in text.lower() for avoid in avoid_texts):
-                                listing_data.building_name = text
-                                name_found = True
-                                break
+                        # Check if it's a valid building name (not just "1 BHK Flat in Sector...")
+                        if (text and len(text) > 3 and not text.isdigit() and 
+                            not re.match(r'^\d+\s*BHK\s+Flat\s+in', text, re.IGNORECASE) and
+                            not re.match(r'^\d+\s*BHK\s+in', text, re.IGNORECASE)):
+                            listing_data.building_name = text
+                            name_found = True
+                            break
                     if name_found:
                         break
                 except:
                     continue
             
-            # Strategy 2: Extract from text patterns if no title found
-            if not name_found:
-                lines = card_text.split('\n')
-                for line in lines[:5]:  # Check first few lines
-                    line = line.strip()
-                    if (line and len(line) > 5 and len(line) < 100 and 
-                        not any(char.isdigit() for char in line[:10]) and  # Not starting with numbers
-                        '₹' not in line and 'BHK' not in line):
-                        listing_data.building_name = line
-                        break
+            # Strategy 2: Extract from URL if still not found
+            if not name_found and listing_data.listing_url:
+                building_name_from_url = self._extract_building_name_from_url(listing_data.listing_url)
+                if building_name_from_url:
+                    listing_data.building_name = building_name_from_url
+                    name_found = True
             
-            # Project name (specific to 99acres)
-            project_selectors = [
-                ".srpTuple__projectName",
-                ".project-name",
-                "[class*='project']"
+            # Strategy 3: Look for developer name separately
+            developer_selectors = [
+                ".projectTuple__developerName",
+                "[class*='developer']",
+                "[class*='builder']"
             ]
             
-            for selector in project_selectors:
+            for selector in developer_selectors:
                 try:
                     elements = card_element.find_elements(By.CSS_SELECTOR, selector)
                     for elem in elements:
                         text = elem.text.strip()
-                        if text and len(text) > 3:
-                            listing_data.project_name = text
+                        if text and len(text) > 2:
+                            listing_data.developer_name = text
                             break
-                    if listing_data.project_name:
-                        break
                 except:
                     continue
+            
+            # Extract location and city
+            location_selectors = [
+                ".projectTuple__location",
+                "[class*='location']",
+                ".srpTuple__location"
+            ]
+            
+            for selector in location_selectors:
+                try:
+                    elements = card_element.find_elements(By.CSS_SELECTOR, selector)
+                    for elem in elements:
+                        text = elem.text.strip()
+                        if text and len(text) > 2:
+                            # Try to separate location and city
+                            parts = text.split(',')
+                            if len(parts) >= 2:
+                                listing_data.location = parts[0].strip()
+                                listing_data.city = parts[-1].strip()
+                            else:
+                                listing_data.location = text
+                            break
+                except:
+                    continue
+            
+            # If location not found, try to extract from card text
+            if not listing_data.location and card_text:
+                location_match = re.search(r'in\s+([^,]+),\s*([^.]+)', card_text)
+                if location_match:
+                    listing_data.location = location_match.group(1).strip()
+                    listing_data.city = location_match.group(2).strip()
             
             # Price information - improved regex patterns
             price_patterns = [
@@ -509,10 +557,11 @@ class Acres99Scraper:
             # Also try to find price in specific elements
             if not listing_data.price:
                 price_selectors = [
-                    ".srpTuple__price",
-                    ".price",
                     "[class*='price']", "[class*='amount']", "[class*='cost']",
-                    "[data-testid*='price']", "[title*='price']"
+                    "[data-testid*='price']", "[title*='price']",
+                    ".srpTuple__price",  # 99acres specific
+                    ".tuple__price",  # 99acres specific
+                    ".tuple__priceValue"  # 99acres specific
                 ]
                 
                 for selector in price_selectors:
@@ -606,8 +655,123 @@ class Acres99Scraper:
         except Exception as e:
             logging.debug(f"Basic info extraction failed: {e}")
 
+    def _extract_building_name_from_url(self, url):
+        """Extract building name from URL for 99acres listings"""
+        try:
+            # Parse the URL
+            parsed = urlparse(url)
+            path = parsed.path
+            
+            # Get the last part of the path (the slug)
+            slug = path.split('/')[-1]
+            
+            # Remove the spid part and everything after it
+            if '-spid-' in slug:
+                slug = slug.split('-spid-')[0]
+            
+            # Now, we know the pattern: ...-for-sale-in-{building}-{location}-{city}
+            # We want to extract the building name which is between "for-sale-in" and the next location pattern
+            
+            # Split by dashes
+            parts = slug.split('-')
+            
+            # Find the index of "for-sale-in" or the sequence of tokens: ['for', 'sale', 'in']
+            # But note: in the split, we have separate tokens: 'for', 'sale', 'in'
+            try:
+                # Find the index of 'in' that is part of 'for-sale-in'
+                # We look for the sequence: 'for', 'sale', 'in'
+                idx = -1
+                for i in range(len(parts) - 2):
+                    if parts[i] == 'for' and parts[i+1] == 'sale' and parts[i+2] == 'in':
+                        idx = i + 3  # start after 'in'
+                        break
+                if idx == -1:
+                    return None
+                
+                # Now, we want to collect tokens until we hit a known location pattern or city
+                # Known location patterns: tokens that are 'sector', 'phase', 'block', etc.
+                # Known cities: we'll have a list
+                known_location_patterns = ['sector', 'phase', 'block', 'pocket']
+                known_cities = ['gurgaon', 'delhi', 'noida', 'faridabad', 'ghaziabad']
+                
+                building_parts = []
+                i = idx
+                while i < len(parts):
+                    token = parts[i]
+                    # Check if token is a known location pattern or a known city
+                    if token in known_location_patterns:
+                        # We found a location pattern, so the building name is the tokens collected so far
+                        break
+                    if token in known_cities:
+                        # We found a city, so the building name is the tokens collected so far
+                        break
+                    # Also, if the token is a number and the previous token was a location pattern? 
+                    # But we break at the location pattern, so we don't get the number.
+                    building_parts.append(token)
+                    i += 1
+                
+                if building_parts:
+                    building_name = ' '.join(building_parts)
+                    # Capitalize each word for proper formatting
+                    building_name = ' '.join(word.capitalize() for word in building_name.split())
+                    return building_name
+            except Exception as e:
+                logging.debug(f"Error parsing URL for building name: {e}")
+                return None
+        except Exception as e:
+            logging.debug(f"Error extracting building name from URL: {e}")
+            return None
+
+    def _extract_all_links_improved(self, card_element, listing_data: ListingData):
+        """Extract all clickable links with improved detection"""
+        try:
+            # Find all links and buttons
+            clickable_elements = card_element.find_elements(By.CSS_SELECTOR, 
+                "a, button, [role='button'], [onclick], [data-href]")
+            
+            all_links = []
+            for element in clickable_elements:
+                try:
+                    href = (element.get_attribute("href") or 
+                           element.get_attribute("data-href") or
+                           element.get_attribute("onclick") or "")
+                    
+                    # If onclick is a JavaScript function, try to extract URL from it
+                    if href.startswith("javascript:") or "window.location" in href:
+                        url_match = re.search(r'["\']([^"\']+)["\']', href)
+                        if url_match:
+                            href = url_match.group(1)
+                    
+                    text = element.text.strip() or element.get_attribute("title") or element.get_attribute("aria-label") or "Link"
+                    target = element.get_attribute("target")
+                    
+                    if href and href != "#" and len(text.strip()) > 0:
+                        link_data = {
+                            "url": href,
+                            "text": text,
+                            "opens_new_tab": target == "_blank"
+                        }
+                        all_links.append(link_data)
+                        
+                except Exception as link_e:
+                    logging.debug(f"Error extracting link: {link_e}")
+                    continue
+            
+            # Store all links
+            listing_data.all_links = all_links
+            listing_data.links_count = len(all_links)
+            
+            # Create a summary of the first few links for display
+            link_texts = [link.get('text', '')[:30] for link in all_links[:5]]
+            listing_data.links_summary = ', '.join(link_texts) + ('...' if len(all_links) > 5 else '')
+            
+            self.extraction_stats["links_extracted"] += len(all_links)
+            
+        except Exception as e:
+            logging.debug(f"All links extraction failed: {e}")
+
     def _extract_nearby_places_improved(self, card_element, listing_data: ListingData, card_text: str):
-        """Extract nearby places with improved parsing for 99acres"""
+        """Extract nearby places with improved parsing"""
         try:
             # Look for "Nearby" sections specifically
             nearby_elements = card_element.find_elements(By.XPATH, 
@@ -665,12 +829,13 @@ class Acres99Scraper:
                         nearby_places.add(place)
             
             listing_data.nearby_places = list(nearby_places)[:15]  # Limit to 15 places
+            listing_data.nearby_places_count = len(listing_data.nearby_places)
             
         except Exception as e:
             logging.debug(f"Nearby places extraction failed: {e}")
 
     def _extract_image_data_improved(self, card_element, listing_data: ListingData):
-        """Extract image information with improved detection for 99acres"""
+        """Extract image information with improved detection"""
         try:
             # Find all images in the card
             img_elements = card_element.find_elements(By.TAG_NAME, "img")
@@ -745,40 +910,8 @@ class Acres99Scraper:
         return (any(keyword in src_lower for keyword in property_keywords) or
                 any(domain in src_lower for domain in property_domains))
 
-    def _extract_links_improved(self, card_element, listing_data: ListingData):
-        """Extract all clickable links with improved detection"""
-        try:
-            # Find all links and buttons
-            clickable_elements = card_element.find_elements(By.CSS_SELECTOR, 
-                "a, button, [role='button'], [onclick], [data-href]")
-            
-            for element in clickable_elements:
-                try:
-                    href = (element.get_attribute("href") or 
-                           element.get_attribute("data-href") or
-                           element.get_attribute("onclick") or "")
-                    
-                    text = element.text.strip() or element.get_attribute("title") or element.get_attribute("aria-label") or "Link"
-                    target = element.get_attribute("target")
-                    
-                    if href and href != "#" and len(text.strip()) > 0:
-                        link_data = {
-                            "url": href,
-                            "text": text,
-                            "opens_new_tab": target == "_blank"
-                        }
-                        listing_data.links.append(link_data)
-                        
-                except:
-                    continue
-            
-            self.extraction_stats["links_extracted"] += len(listing_data.links)
-            
-        except Exception as e:
-            logging.debug(f"Link extraction failed: {e}")
-
     def _extract_additional_details_improved(self, card_element, listing_data: ListingData, card_text: str):
-        """Extract additional property details with improved parsing for 99acres"""
+        """Extract additional property details with improved parsing"""
         try:
             # Floor information - improved patterns
             floor_patterns = [
@@ -817,7 +950,7 @@ class Acres99Scraper:
             for pattern in age_patterns:
                 match = re.search(pattern, card_text, re.IGNORECASE)
                 if match:
-                    listing_data.age = f"{match.group(1)} years"
+                    listing_data.property_age = f"{match.group(1)} years"
                     break
             
             # Broker/Owner information
@@ -869,10 +1002,103 @@ class Acres99Scraper:
                 if amenity in card_text_lower:
                     found_amenities.append(amenity.title())
             
-            listing_data.additional_amenities = list(set(found_amenities))  # Remove duplicates
+            listing_data.amenities = ', '.join(list(set(found_amenities)))  # Remove duplicates
+            listing_data.amenities_count = len(found_amenities)
             
         except Exception as e:
             logging.debug(f"Additional details extraction failed: {e}")
+
+    def _extract_features_and_description(self, card_element, listing_data: ListingData, card_text: str):
+        """Extract property features and description"""
+        try:
+            # Try to find a description element
+            description_selectors = [
+                ".description",
+                "[class*='description']",
+                ".projectTuple__description",
+                ".srpTuple__description"
+            ]
+            
+            for selector in description_selectors:
+                try:
+                    elements = card_element.find_elements(By.CSS_SELECTOR, selector)
+                    for elem in elements:
+                        text = elem.text.strip()
+                        if text and len(text) > 10:
+                            listing_data.description = text
+                            break
+                    if listing_data.description:
+                        break
+                except:
+                    continue
+            
+            # If no description found, try to extract from card text
+            if not listing_data.description:
+                # Try to find a paragraph of text that might be a description
+                lines = card_text.split('\n')
+                potential_descriptions = []
+                
+                for line in lines:
+                    line = line.strip()
+                    # Look for lines that are longer than typical property attributes
+                    if (len(line) > 40 and 
+                        not re.search(r'₹|BHK|sqft|bath|floor|parking', line, re.IGNORECASE) and
+                        not line.startswith('Contact') and
+                        not line.startswith('View')):
+                        potential_descriptions.append(line)
+                
+                if potential_descriptions:
+                    listing_data.description = potential_descriptions[0]
+            
+            # Extract features - look for bullet points or specific feature sections
+            features = []
+            
+            # Try to find feature lists
+            feature_selectors = [
+                ".features li",
+                "[class*='feature'] li",
+                ".amenities li",
+                "[class*='amenity'] li",
+                ".specifications li",
+                "[class*='specification'] li"
+            ]
+            
+            for selector in feature_selectors:
+                try:
+                    elements = card_element.find_elements(By.CSS_SELECTOR, selector)
+                    for elem in elements:
+                        text = elem.text.strip()
+                        if text and len(text) > 2:
+                            features.append(text)
+                except:
+                    continue
+            
+            # If no features found, try to extract from text using patterns
+            if not features:
+                feature_patterns = [
+                    r'•\s*([^\n]+)',
+                    r'✓\s*([^\n]+)',
+                    r'✅\s*([^\n]+)',
+                    r'✔\s*([^\n]+)',
+                    r'(\d+\s*[A-Za-z]+\s*(?:Bathroom|Bedroom|Balcony))',
+                    r'([A-Za-z]+\s*(?:Facing|Parking|Furnished))'
+                ]
+                
+                for pattern in feature_patterns:
+                    matches = re.findall(pattern, card_text, re.IGNORECASE)
+                    for match in matches:
+                        if isinstance(match, tuple):
+                            match = match[0] if match[0] else match[1]
+                        
+                        cleaned = match.strip()
+                        if cleaned and len(cleaned) > 2:
+                            features.append(cleaned)
+            
+            # Remove duplicates and limit to 20 features
+            listing_data.features = list(set(features))[:20]
+            
+        except Exception as e:
+            logging.debug(f"Features and description extraction failed: {e}")
 
     def _validate_listing_data(self, listing_data: ListingData) -> bool:
         """Validate extracted listing data with improved criteria"""
@@ -895,7 +1121,7 @@ class Acres99Scraper:
             
             # Must have either property info or nearby places or images
             has_relevant_data = (has_property_info or 
-                               len(listing_data.nearby_places) > 0 or 
+                               listing_data.nearby_places_count > 0 or 
                                listing_data.image_count > 0)
             
             return has_relevant_data
@@ -914,12 +1140,11 @@ class Acres99Scraper:
             logging.info(f"Starting extraction - Target: {self.max_listings} listings")
             
             while (len(all_extracted_data) < self.max_listings and 
-                  scroll_count < self.max_scrolls and 
-                  consecutive_no_cards < 3):
+                   scroll_count < self.max_scrolls and 
+                   consecutive_no_cards < 3):
                 
                 logging.info(f"Processing page {scroll_count + 1}/{self.max_scrolls}...")
                 
-                # Find property cards using improved method
                 property_cards = self.find_property_cards_improved()
                 
                 if not property_cards:
@@ -940,30 +1165,19 @@ class Acres99Scraper:
                 
                 logging.info(f"Found {new_cards_count} property cards on page {scroll_count + 1}")
                 
-                # Process each card
                 successful_extractions = 0
                 for i, card_element in enumerate(property_cards):
                     if len(all_extracted_data) >= self.max_listings:
                         break
                     
                     try:
-                        logging.info(f"Processing card {i+1}/{new_cards_count}...")
-                        
-                        # Extract comprehensive data
                         listing_data = self.extract_comprehensive_card_data(card_element)
                         
                         if listing_data:
-                            # Convert to dictionary for DataFrame
+                            # Convert to dictionary and add index
                             listing_dict = self._listing_data_to_dict(listing_data, len(all_extracted_data) + 1)
                             all_extracted_data.append(listing_dict)
                             successful_extractions += 1
-                            
-                            # Log progress
-                            name = listing_data.building_name[:30] if listing_data.building_name else "Unknown"
-                            price = listing_data.price[:20] if listing_data.price else "No price"
-                            bhk = listing_data.apartment_type or "Unknown type"
-                            
-                            logging.info(f"✓ Extracted #{len(all_extracted_data)}: {name} | {price} | {bhk}")
                         else:
                             logging.debug(f"✗ Failed to extract data from card {i+1}")
                     
@@ -971,20 +1185,14 @@ class Acres99Scraper:
                         logging.debug(f"Error processing card {i+1}: {e}")
                         continue
                     
-                    # Small delay between cards
                     time.sleep(random.uniform(0.2, 0.5))
                 
                 logging.info(f"Page {scroll_count + 1} completed: {successful_extractions}/{new_cards_count} cards extracted")
                 
-                # Scroll to next section if needed
                 if len(all_extracted_data) < self.max_listings and scroll_count < self.max_scrolls - 1:
                     self._smart_scroll_and_wait()
-                
+                    
                 scroll_count += 1
-                
-                # Progress update
-                progress = (len(all_extracted_data) / self.max_listings) * 100
-                logging.info(f"Overall progress: {len(all_extracted_data)}/{self.max_listings} ({progress:.1f}%)")
             
             logging.info(f"Extraction completed: {len(all_extracted_data)} listings extracted in {scroll_count} pages")
             return all_extracted_data
@@ -999,7 +1207,7 @@ class Acres99Scraper:
             # Basic information
             'listing_index': index,
             'building_name': listing_data.building_name or '',
-            'project_name': listing_data.project_name or '',  # Added for 99acres
+            'developer_name': listing_data.developer_name or '',
             'price': listing_data.price or '',
             'emi': listing_data.emi or '',
             'buildup_area': listing_data.buildup_area or '',
@@ -1009,17 +1217,29 @@ class Acres99Scraper:
             'parking': listing_data.parking or '',
             'floor': listing_data.floor or '',
             'furnishing': listing_data.furnishing or '',
-            'property_age': listing_data.age or '',
+            'property_age': listing_data.property_age or '',
             'broker_info': listing_data.broker_info or '',
             'verification_status': listing_data.verification_status or '',
             'possession_date': listing_data.possession_date or '',
+            
+            # Location information
+            'location': listing_data.location or '',
+            'city': listing_data.city or '',
+            
+            # Property identification
+            'property_id': listing_data.property_id or '',
+            'listing_url': listing_data.listing_url or '',
+            
+            # Description and features
+            'description': listing_data.description or '',
+            'features': ', '.join(listing_data.features) if listing_data.features else '',
             
             # Image information
             'image_count': listing_data.image_count,
             'image_urls': ', '.join(listing_data.image_urls) if listing_data.image_urls else '',
             
             # Nearby places
-            'nearby_places_count': len(listing_data.nearby_places),
+            'nearby_places_count': listing_data.nearby_places_count,
             'nearby_places': ', '.join(listing_data.nearby_places) if listing_data.nearby_places else '',
         }
         
@@ -1032,21 +1252,18 @@ class Acres99Scraper:
                 data_dict[place_key] = ''
         
         # Add link information
-        data_dict['links_count'] = len(listing_data.links)
-        data_dict['links_summary'] = ', '.join([link.get('text', '')[:20] for link in listing_data.links[:3]])
+        data_dict['links_count'] = listing_data.links_count
+        data_dict['links_summary'] = listing_data.links_summary
         
-        # Add first 3 links detailed info
-        for i in range(3):
-            if i < len(listing_data.links):
-                data_dict[f'link_{i+1}_text'] = listing_data.links[i].get('text', '')
-                data_dict[f'link_{i+1}_url'] = listing_data.links[i].get('url', '')
-            else:
-                data_dict[f'link_{i+1}_text'] = ''
-                data_dict[f'link_{i+1}_url'] = ''
+        # Add all links as JSON string
+        if listing_data.all_links:
+            data_dict['all_links'] = json.dumps(listing_data.all_links)
+        else:
+            data_dict['all_links'] = ''
         
         # Add amenities
-        data_dict['amenities_count'] = len(listing_data.additional_amenities)
-        data_dict['amenities'] = ', '.join(listing_data.additional_amenities) if listing_data.additional_amenities else ''
+        data_dict['amenities_count'] = listing_data.amenities_count
+        data_dict['amenities'] = listing_data.amenities
         
         # Metadata
         data_dict['extraction_timestamp'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -1055,7 +1272,7 @@ class Acres99Scraper:
         return data_dict
 
     def _smart_scroll_and_wait(self):
-        """Intelligent scrolling with improved load detection for 99acres"""
+        """Intelligent scrolling with improved load detection"""
         try:
             # Store current page height
             last_height = self.driver.execute_script("return document.body.scrollHeight")
@@ -1090,9 +1307,9 @@ class Acres99Scraper:
             logging.debug(f"Smart scroll failed: {e}")
 
     def _try_load_more_buttons(self) -> bool:
-        """Try clicking load more buttons with comprehensive detection for 99acres"""
+        """Try clicking load more buttons with comprehensive detection"""
         try:
-            # Enhanced load more button selectors for 99acres
+            # Enhanced load more button selectors
             load_more_selectors = [
                 "button[class*='load-more']",
                 "button[class*='show-more']",
@@ -1105,7 +1322,8 @@ class Acres99Scraper:
                 ".show-more-btn",
                 "button[aria-label*='more']",
                 ".pagination__next",  # 99acres specific
-                ".paginationNext"     # 99acres specific
+                ".nextBtn",  # 99acres specific
+                ".srp__next"  # 99acres specific
             ]
             
             for selector in load_more_selectors:
@@ -1128,7 +1346,7 @@ class Acres99Scraper:
                     continue
             
             # Try by text content with broader search
-            load_texts = ["Load More", "Show More", "View More", "Load Additional", "See More", "More Results", "Next"]
+            load_texts = ["Load More", "Show More", "View More", "Load Additional", "See More", "More Results", "Next", "Next Page"]
             for text in load_texts:
                 try:
                     # Try both button and link elements
@@ -1164,7 +1382,7 @@ class Acres99Scraper:
             return False
 
     def _dismiss_popups_advanced(self):
-        """Enhanced popup dismissal with comprehensive detection for 99acres"""
+        """Enhanced popup dismissal with comprehensive detection"""
         try:
             # Common popup close selectors
             close_selectors = [
@@ -1181,8 +1399,9 @@ class Acres99Scraper:
                 ".overlay .close",
                 "button.close",
                 "[class*='close'][class*='button']",
-                ".notification-close",  # 99acres specific
-                ".popup__close"         # 99acres specific
+                ".closeIcon",  # 99acres specific
+                ".popup__close",  # 99acres specific
+                ".modal__close"  # 99acres specific
             ]
             
             dismissed_count = 0
@@ -1276,7 +1495,7 @@ class Acres99Scraper:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             output_path = os.path.join(
                 self.output_dir, 
-                f"99acres_improved_extraction_{timestamp}.xlsx"
+                f"99acres_extraction_{timestamp}.xlsx"
             )
             
             with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
@@ -1331,12 +1550,19 @@ class Acres99Scraper:
                     if nearby_analysis:
                         nearby_df = pd.DataFrame(nearby_analysis)
                         nearby_df.to_excel(writer, sheet_name="Nearby_Places_Analysis", index=False)
+                
+                # Links analysis
+                if 'all_links' in df.columns:
+                    links_analysis = self._analyze_links(df)
+                    if links_analysis:
+                        links_df = pd.DataFrame(links_analysis)
+                        links_df.to_excel(writer, sheet_name="Links_Analysis", index=False)
             
-            logging.info(f"Improved data saved to: {output_path}")
+            logging.info(f"Enhanced data saved to: {output_path}")
             return output_path
             
         except Exception as e:
-            logging.error(f"Failed to save improved data: {e}")
+            logging.error(f"Failed to save enhanced data: {e}")
             
             # Fallback to CSV
             try:
@@ -1411,15 +1637,71 @@ class Acres99Scraper:
             logging.debug(f"Nearby places analysis failed: {e}")
             return []
 
-    def run(self, target_url: str = None) -> Optional[str]:
-        """Main execution method - maintains compatibility with original interface"""
-        if target_url is None:
-            target_url = "https://www.99acres.com/search/property/buy/gurgaon-1-bhk?city=8&keyword=gurgaon%201%20bhk&preference=S&area_unit=1&res_com=R"
-        
-        return self.run_improved_extraction(target_url)
+    def _analyze_links(self, df: pd.DataFrame) -> List[Dict]:
+        """Analyze links data"""
+        try:
+            if 'all_links' not in df.columns:
+                return []
+            
+            # Count frequency of link types
+            all_link_texts = []
+            all_link_domains = []
+            
+            for links_json in df['all_links'].dropna():
+                if links_json:
+                    try:
+                        links = json.loads(links_json)
+                        for link in links:
+                            if 'text' in link and link['text']:
+                                all_link_texts.append(link['text'].lower())
+                            
+                            if 'url' in link and link['url']:
+                                url = link['url']
+                                parsed = urlparse(url)
+                                if parsed.netloc:
+                                    all_link_domains.append(parsed.netloc)
+                    except:
+                        continue
+            
+            analysis_data = []
+            
+            # Analyze link texts
+            if all_link_texts:
+                from collections import Counter
+                text_counts = Counter(all_link_texts)
+                
+                for text, count in text_counts.most_common(15):
+                    analysis_data.append({
+                        'Type': 'Link Text',
+                        'Value': text,
+                        'Frequency': count,
+                        'Percentage': f"{(count / len(all_link_texts) * 100):.1f}%"
+                    })
+            
+            # Analyze link domains
+            if all_link_domains:
+                from collections import Counter
+                domain_counts = Counter(all_link_domains)
+                
+                for domain, count in domain_counts.most_common(10):
+                    analysis_data.append({
+                        'Type': 'Link Domain',
+                        'Value': domain,
+                        'Frequency': count,
+                        'Percentage': f"{(count / len(all_link_domains) * 100):.1f}%"
+                    })
+            
+            return analysis_data
+            
+        except Exception as e:
+            logging.debug(f"Links analysis failed: {e}")
+            return []
 
-    def run_improved_extraction(self, target_url: str) -> Optional[str]:
-        """Main execution method for improved extraction"""
+    def run(self, target_url: str = None) -> Optional[str]:
+        """Main execution method"""
+        if target_url is None:
+            target_url = "https://www.99acres.com/search/property/buy/residential-apartments/1rk?city=8&bedroom_num=1&keyword=1RK&property_type=1&preference=S&area_unit=1&budget_min=0&res_com=R&isPreLeased=N"
+        
         self._setup_enhanced_webdriver()
         
         try:
@@ -1442,7 +1724,7 @@ class Acres99Scraper:
             return output_path
             
         except Exception as e:
-            logging.error(f"Improved extraction failed: {e}")
+            logging.error(f"Extraction failed: {e}")
             return None
         finally:
             try:
@@ -1454,7 +1736,7 @@ class Acres99Scraper:
     def _print_final_summary(self, extracted_data: List[Dict]):
         """Print comprehensive extraction summary"""
         logging.info("="*80)
-        logging.info("🎉 IMPROVED EXTRACTION COMPLETED")
+        logging.info("🎉 EXTRACTION COMPLETED")
         logging.info("="*80)
         
         stats = self.extraction_stats
@@ -1474,83 +1756,231 @@ class Acres99Scraper:
         logging.info(f"  • Links extracted: {stats['links_extracted']}")
         logging.info(f"  • Processing time: {duration:.1f} minutes")
         
-        # Data quality summary
         if extracted_data:
+            # Analyze extraction quality
             df = pd.DataFrame(extracted_data)
             
-            logging.info(f"\n📈 DATA QUALITY SUMMARY:")
-            
-            # Price data
-            with_price = len(df[df['price'].notna() & (df['price'] != '')])
-            logging.info(f"  • Listings with price: {with_price}/{len(df)} ({with_price/len(df)*100:.1f}%)")
-            
-            # Apartment type
-            with_type = len(df[df['apartment_type'].notna() & (df['apartment_type'] != '')])
-            logging.info(f"  • Listings with apartment type: {with_type}/{len(df)} ({with_type/len(df)*100:.1f}%)")
-            
-            # Area data
-            with_area = len(df[df['buildup_area'].notna() & (df['buildup_area'] != '')])
-            logging.info(f"  • Listings with area info: {with_area}/{len(df)} ({with_area/len(df)*100:.1f}%)")
-            
-            # Nearby places
-            with_nearby = len(df[df['nearby_places_count'] > 0])
+            price_count = len(df[df['price'].notna() & (df['price'] != '')])
+            nearby_count = len(df[df['nearby_places_count'] > 0])
             avg_nearby = df['nearby_places_count'].mean()
-            logging.info(f"  • Listings with nearby places: {with_nearby}/{len(df)} ({with_nearby/len(df)*100:.1f}%)")
+            building_name_count = len(df[df['building_name'].notna() & (df['building_name'] != '')])
+            
+            logging.info(f"\n📋 DATA QUALITY SUMMARY:")
+            logging.info(f"  • Listings with price: {price_count}/{len(extracted_data)} ({price_count/len(extracted_data)*100:.1f}%)")
+            logging.info(f"  • Listings with building name: {building_name_count}/{len(extracted_data)} ({building_name_count/len(extracted_data)*100:.1f}%)")
+            logging.info(f"  • Listings with nearby places: {nearby_count}/{len(extracted_data)} ({nearby_count/len(extracted_data)*100:.1f}%)")
             logging.info(f"  • Average nearby places per listing: {avg_nearby:.1f}")
+            
+            # Show sample data
+            sample = extracted_data[0]
+            logging.info(f"\n📋 SAMPLE EXTRACTED DATA:")
+            sample_fields = ['building_name', 'developer_name', 'price', 'apartment_type', 'buildup_area', 'location', 'city']
+            for field in sample_fields:
+                if field in sample and sample[field]:
+                    value = str(sample[field])[:50] + "..." if len(str(sample[field])) > 50 else sample[field]
+                    logging.info(f"  • {field}: {value}")
+            
+            # Show sample links
+            if 'all_links' in sample and sample['all_links']:
+                try:
+                    links = json.loads(sample['all_links'])
+                    logging.info(f"\n📋 SAMPLE LINKS ({len(links)} total):")
+                    for i, link in enumerate(links[:3]):  # Show first 3
+                        text = link.get('text', 'No text')[:30]
+                        url = link.get('url', 'No URL')[:50]
+                        logging.info(f"  • Link {i+1}: {text} - {url}")
+                    
+                    if len(links) > 3:
+                        logging.info(f"  • ... and {len(links) - 3} more links")
+                except:
+                    logging.info(f"  • Error parsing links data")
         
         logging.info("="*80)
-        logging.info(f"✅ EXTRACTION COMPLETED SUCCESSFULLY")
-        logging.info("="*80)
+
+
+# Create improved configuration
+def create_improved_config():
+    """Create improved configuration file"""
+    config = configparser.ConfigParser()
+    
+    config["limits"] = {
+        "max_listings_per_society": "100",
+        "max_scrolls": "50"
+    }
+    
+    config["manual"] = {
+        "selection_wait_time": "10"
+    }
+    
+    config["output"] = {
+        "output_dir": "99acres_output"
+    }
+    
+    config["http"] = {
+        "min_delay": "1.0",
+        "max_delay": "2.5"
+    }
+    
+    config["extraction"] = {
+        "detailed_mode": "true",
+        "extract_images": "true", 
+        "extract_links": "true",
+        "extract_nearby_places": "true"
+    }
+    
+    return config
 
 
 def main():
-    """Main function to run the scraper"""
-    # Setup logging
+    """Main function with better error handling"""
     logging.basicConfig(
         level=logging.INFO,
-        format="%(asctime)s - %(levelname)s - %(message)s",
+        format="%(asctime)s [%(levelname)s] %(message)s",
         handlers=[
-            logging.FileHandler("99acres_scraper.log"),
-            logging.StreamHandler()
+            logging.StreamHandler(),
+            logging.FileHandler("99acres_scraper.log")
         ]
     )
     
-    # Create a simple config
-    config = configparser.ConfigParser()
-    config.read_dict({
-        "limits": {
-            "max_listings_per_society": "50",
-            "max_scrolls": "20"
-        },
-        "manual": {
-            "selection_wait_time": "5"
-        },
-        "http": {
-            "min_delay": "1.5",
-            "max_delay": "3.0"
-        },
-        "output": {
-            "output_dir": "output"
-        }
-    })
+    print("=" * 80)
+    print("🏠 99acres.com Property Data Extractor")
+    print("=" * 80)
+    print("🔧 Features:")
+    print("  • Extract property listings from search results")
+    print("  • Handle pagination and auto-scrolling")
+    print("  • Extract comprehensive property details")
+    print("  • Save data to Excel with multiple analysis sheets")
+    print("  • Handle interruptions and save partial data")
+    print("=" * 80)
     
-    # Generate run ID and timestamp
-    run_id = f"99acres_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    config_path = "99acres_config.ini"
+    
+    # Create or load configuration
+    if not os.path.exists(config_path):
+        config = create_improved_config()
+        with open(config_path, "w") as f:
+            config.write(f)
+        logging.info(f"Created configuration: {config_path}")
+    else:
+        config = configparser.ConfigParser()
+        config.read(config_path)
+    
+    # URL options
+    default_url = "https://www.99acres.com/search/property/buy/residential-apartments/1rk?city=8&bedroom_num=1&keyword=1RK&property_type=1&preference=S&area_unit=1&budget_min=0&res_com=R&isPreLeased=N"
+    url_options = [
+        default_url,
+        "https://www.99acres.com/search/property/buy/residential-apartments/all?city=8&preference=S&area_unit=1&budget_min=0&res_com=R&isPreLeased=N",
+        "https://www.99acres.com/search/property/buy/residential-house/villa/all?city=8&preference=S&area_unit=1&budget_min=0&res_com=R&isPreLeased=N"
+    ]
+    
+    print(f"\n🎯 Default URL: {default_url}")
+    print(f"\n📋 Other options:")
+    for i, url in enumerate(url_options, 1):
+        print(f"  {i}. {url}")
+    
+    # URL selection
+    target_url = default_url
+    try:
+        print(f"\n" + "="*60)
+        choice = input(f"Select URL (1-{len(url_options)}) or press Enter for default: ").strip()
+        
+        if choice.isdigit():
+            choice_idx = int(choice) - 1
+            if 0 <= choice_idx < len(url_options):
+                target_url = url_options[choice_idx]
+                print(f"✓ Selected: {target_url}")
+        elif choice.startswith("http"):
+            target_url = choice
+            print(f"✓ Custom URL: {target_url}")
+        else:
+            print(f"✓ Using default: {target_url}")
+            
+    except KeyboardInterrupt:
+        print("\n👋 Exiting...")
+        return
+    except Exception as e:
+        print(f"⚠️ Input error, using default URL: {e}")
+    
+    # Initialize and run scraper
+    run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
     start_ts = datetime.now()
-    
-    # Create scraper instance
     scraper = Acres99Scraper(config, run_id, start_ts)
     
-    # Target URL
-    target_url = "https://www.99acres.com/search/property/buy/gurgaon-1-bhk?city=8&keyword=gurgaon%201%20bhk&preference=S&area_unit=1&res_com=R"
-    
-    # Run scraper
-    output_path = scraper.run(target_url)
-    
-    if output_path:
-        logging.info(f"📁 Results saved to: {output_path}")
-    else:
-        logging.error("❌ Extraction failed")
+    try:
+        print(f"\n🚀 Starting extraction...")
+        print(f"📍 Target URL: {target_url}")
+        print(f"⏱️  Started at: {start_ts.strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"🎯 Target listings: {scraper.max_listings}")
+        print("=" * 80)
+        
+        output_path = scraper.run(target_url)
+        
+        if output_path:
+            print("\n" + "="*80)
+            print("✅ EXTRACTION COMPLETED SUCCESSFULLY!")
+            print("="*80)
+            print(f"📁 Data saved to: {output_path}")
+            print(f"📊 Check the Excel file for:")
+            print("   • Property_Listings: Main extracted data")
+            print("   • Extraction_Summary: Statistics and metrics")
+            print("   • Data_Quality: Field completeness analysis")
+            print("   • Nearby_Places_Analysis: Most common nearby places")
+            print("   • Links_Analysis: Analysis of all extracted links")
+            print("="*80)
+        else:
+            print("\n" + "="*80)
+            print("⚠️ EXTRACTION COMPLETED WITH ISSUES")
+            print("="*80)
+            print("❌ No data was successfully extracted")
+            print("💡 Possible reasons:")
+            print("   • Website structure changed")
+            print("   • Access blocked or captcha required")
+            print("   • No property listings found on the page")
+            print("   • Network connectivity issues")
+            print("\n💭 Try:")
+            print("   • Using a different URL")
+            print("   • Checking the manual setup phase more carefully")
+            print("   • Running again with different filters")
+            print("="*80)
+            
+    except KeyboardInterrupt:
+        print("\n" + "="*80)
+        print("⚠️ EXTRACTION INTERRUPTED BY USER")
+        print("="*80)
+        
+        # Try to save partial data
+        try:
+            if hasattr(scraper, 'extracted_data') and scraper.extracted_data:
+                print("💾 Attempting to save partial data...")
+                emergency_save = scraper.save_enhanced_data(scraper.extracted_data)
+                if emergency_save:
+                    print(f"✅ Partial data saved to: {emergency_save}")
+                else:
+                    print("❌ Failed to save partial data")
+            else:
+                print("❌ No data available to save")
+        except Exception as save_e:
+            print(f"❌ Failed to save partial data: {save_e}")
+        
+        print("="*80)
+        
+    except Exception as e:
+        print("\n" + "="*80)
+        print("💥 FATAL ERROR OCCURRED")
+        print("="*80)
+        logging.error(f"Fatal error: {e}")
+        print(f"❌ Error: {e}")
+        print("\n💡 This might be due to:")
+        print("   • Website blocking automated access")
+        print("   • Changes in website structure")
+        print("   • WebDriver issues")
+        print("   • Network problems")
+        print("\n🔧 Try:")
+        print("   • Running the script again")
+        print("   • Updating Chrome/ChromeDriver")
+        print("   • Using a VPN if access is blocked")
+        print("   • Checking the log file for more details")
+        print("="*80)
 
 
 if __name__ == "__main__":
