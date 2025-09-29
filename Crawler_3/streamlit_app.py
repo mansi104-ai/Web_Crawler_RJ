@@ -699,9 +699,9 @@ def render_settings():
             # st.rerun()
         
         # System info
-        st.markdown("### ℹ️ System Info")
-        st.info(f"Python: {sys.version.split()[0]}")
-        st.info(f"Working Directory: {os.getcwd()}")
+        # st.markdown("### ℹ️ System Info")
+        # st.info(f"Python: {sys.version.split()[0]}")
+        # st.info(f"Working Directory: {os.getcwd()}")
         
         # Recent logs
         st.markdown("### 📝 Recent Logs")
