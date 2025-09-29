@@ -512,7 +512,11 @@ def render_website_cards():
                     if st.session_state.current_process:
                         st.session_state.current_process.terminate()
                     st.session_state.scraping_status[site]['status'] = 'stopped'
-                    st.rerun()
+                    # Correct usage
+                    if st.button("Update"):
+                        st.rerun()
+
+                    
 
 def render_current_status():
     """Render current scraping status"""
