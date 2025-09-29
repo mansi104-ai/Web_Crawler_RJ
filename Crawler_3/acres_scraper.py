@@ -1076,10 +1076,10 @@ class Acres99Scraper:
             # If no features found, try to extract from text using patterns
             if not features:
                 feature_patterns = [
-                    r'•\s*([^\n]+)',
-                    r'✓\s*([^\n]+)',
-                    r'✅\s*([^\n]+)',
-                    r'✔\s*([^\n]+)',
+                    r'\s*([^\n]+)',
+                    r'\s*([^\n]+)',
+                    r'\s*([^\n]+)',
+                    r'\s*([^\n]+)',
                     r'(\d+\s*[A-Za-z]+\s*(?:Bathroom|Bedroom|Balcony))',
                     r'([A-Za-z]+\s*(?:Facing|Parking|Furnished))'
                 ]
@@ -1455,7 +1455,7 @@ class Acres99Scraper:
                 logging.warning("No property content found on page - may need manual setup")
             
             logging.info("="*70)
-            logging.info("🔧 MANUAL SETUP PHASE")
+            # logging.info("🔧 MANUAL SETUP PHASE")
             logging.info("="*70)
             logging.info("Please complete the following if needed:")
             logging.info("1. Handle any sign-in or captcha prompts")
@@ -1463,7 +1463,7 @@ class Acres99Scraper:
             logging.info("3. Ensure property listings are visible on page")
             logging.info("4. Close any modal dialogs or popups")
             logging.info("5. Scroll down to see if more listings load")
-            logging.info(f"⏳ Auto-start in {self.manual_wait_time} seconds...")
+            logging.info(f" Auto-start in {self.manual_wait_time} seconds...")
             logging.info("="*70)
             
             # Countdown
@@ -1471,7 +1471,7 @@ class Acres99Scraper:
                 print(f"\rStarting extraction in {i:2d} seconds... ", end="", flush=True)
                 time.sleep(1)
             
-            print("\n🚀 Starting improved property extraction...")
+            print("\n Starting improved property extraction...")
             
             # Final popup dismissal before starting
             self._dismiss_popups_advanced()
@@ -1736,13 +1736,13 @@ class Acres99Scraper:
     def _print_final_summary(self, extracted_data: List[Dict]):
         """Print comprehensive extraction summary"""
         logging.info("="*80)
-        logging.info("🎉 EXTRACTION COMPLETED")
+        logging.info(" EXTRACTION COMPLETED")
         logging.info("="*80)
         
         stats = self.extraction_stats
         duration = (datetime.now() - self.start_ts).total_seconds() / 60
         
-        logging.info(f"📊 EXTRACTION STATISTICS:")
+        logging.info(f" EXTRACTION STATISTICS:")
         logging.info(f"  • Total listings extracted: {len(extracted_data)}")
         logging.info(f"  • Cards detected: {stats['total_cards_found']}")
         logging.info(f"  • Successful extractions: {stats['successful_extractions']}")
@@ -1765,7 +1765,7 @@ class Acres99Scraper:
             avg_nearby = df['nearby_places_count'].mean()
             building_name_count = len(df[df['building_name'].notna() & (df['building_name'] != '')])
             
-            logging.info(f"\n📋 DATA QUALITY SUMMARY:")
+            logging.info(f"\n DATA QUALITY SUMMARY:")
             logging.info(f"  • Listings with price: {price_count}/{len(extracted_data)} ({price_count/len(extracted_data)*100:.1f}%)")
             logging.info(f"  • Listings with building name: {building_name_count}/{len(extracted_data)} ({building_name_count/len(extracted_data)*100:.1f}%)")
             logging.info(f"  • Listings with nearby places: {nearby_count}/{len(extracted_data)} ({nearby_count/len(extracted_data)*100:.1f}%)")
@@ -1773,7 +1773,7 @@ class Acres99Scraper:
             
             # Show sample data
             sample = extracted_data[0]
-            logging.info(f"\n📋 SAMPLE EXTRACTED DATA:")
+            logging.info(f"\n SAMPLE EXTRACTED DATA:")
             sample_fields = ['building_name', 'developer_name', 'price', 'apartment_type', 'buildup_area', 'location', 'city']
             for field in sample_fields:
                 if field in sample and sample[field]:
@@ -1784,7 +1784,7 @@ class Acres99Scraper:
             if 'all_links' in sample and sample['all_links']:
                 try:
                     links = json.loads(sample['all_links'])
-                    logging.info(f"\n📋 SAMPLE LINKS ({len(links)} total):")
+                    logging.info(f"\n SAMPLE LINKS ({len(links)} total):")
                     for i, link in enumerate(links[:3]):  # Show first 3
                         text = link.get('text', 'No text')[:30]
                         url = link.get('url', 'No URL')[:50]
@@ -1843,9 +1843,9 @@ def main():
     )
     
     print("=" * 80)
-    print("🏠 99acres.com Property Data Extractor")
+    print(" 99acres.com Property Data Extractor")
     print("=" * 80)
-    print("🔧 Features:")
+    print(" Features:")
     print("  • Extract property listings from search results")
     print("  • Handle pagination and auto-scrolling")
     print("  • Extract comprehensive property details")
@@ -1873,8 +1873,8 @@ def main():
         "https://www.99acres.com/search/property/buy/residential-house/villa/all?city=8&preference=S&area_unit=1&budget_min=0&res_com=R&isPreLeased=N"
     ]
     
-    print(f"\n🎯 Default URL: {default_url}")
-    print(f"\n📋 Other options:")
+    print(f"\n Default URL: {default_url}")
+    print(f"\nOther options:")
     for i, url in enumerate(url_options, 1):
         print(f"  {i}. {url}")
     
@@ -1896,10 +1896,10 @@ def main():
             print(f"✓ Using default: {target_url}")
             
     except KeyboardInterrupt:
-        print("\n👋 Exiting...")
+        print("\nExiting...")
         return
     except Exception as e:
-        print(f"⚠️ Input error, using default URL: {e}")
+        print(f" Input error, using default URL: {e}")
     
     # Initialize and run scraper
     run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -1907,20 +1907,20 @@ def main():
     scraper = Acres99Scraper(config, run_id, start_ts)
     
     try:
-        print(f"\n🚀 Starting extraction...")
-        print(f"📍 Target URL: {target_url}")
-        print(f"⏱️  Started at: {start_ts.strftime('%Y-%m-%d %H:%M:%S')}")
-        print(f"🎯 Target listings: {scraper.max_listings}")
+        print(f"\n Starting extraction...")
+        print(f"Target URL: {target_url}")
+        print(f"  Started at: {start_ts.strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f" Target listings: {scraper.max_listings}")
         print("=" * 80)
         
         output_path = scraper.run(target_url)
         
         if output_path:
             print("\n" + "="*80)
-            print("✅ EXTRACTION COMPLETED SUCCESSFULLY!")
+            print(" EXTRACTION COMPLETED SUCCESSFULLY!")
             print("="*80)
-            print(f"📁 Data saved to: {output_path}")
-            print(f"📊 Check the Excel file for:")
+            print(f" Data saved to: {output_path}")
+            print(f" Check the Excel file for:")
             print("   • Property_Listings: Main extracted data")
             print("   • Extraction_Summary: Statistics and metrics")
             print("   • Data_Quality: Field completeness analysis")
@@ -1929,15 +1929,15 @@ def main():
             print("="*80)
         else:
             print("\n" + "="*80)
-            print("⚠️ EXTRACTION COMPLETED WITH ISSUES")
+            print(" EXTRACTION COMPLETED WITH ISSUES")
             print("="*80)
-            print("❌ No data was successfully extracted")
-            print("💡 Possible reasons:")
+            print(" No data was successfully extracted")
+            print(" Possible reasons:")
             print("   • Website structure changed")
             print("   • Access blocked or captcha required")
             print("   • No property listings found on the page")
             print("   • Network connectivity issues")
-            print("\n💭 Try:")
+            print("\n Try:")
             print("   • Using a different URL")
             print("   • Checking the manual setup phase more carefully")
             print("   • Running again with different filters")
@@ -1951,31 +1951,31 @@ def main():
         # Try to save partial data
         try:
             if hasattr(scraper, 'extracted_data') and scraper.extracted_data:
-                print("💾 Attempting to save partial data...")
+                print("Attempting to save partial data...")
                 emergency_save = scraper.save_enhanced_data(scraper.extracted_data)
                 if emergency_save:
                     print(f"✅ Partial data saved to: {emergency_save}")
                 else:
-                    print("❌ Failed to save partial data")
+                    print(" Failed to save partial data")
             else:
-                print("❌ No data available to save")
+                print(" No data available to save")
         except Exception as save_e:
-            print(f"❌ Failed to save partial data: {save_e}")
+            print(f" Failed to save partial data: {save_e}")
         
         print("="*80)
         
     except Exception as e:
         print("\n" + "="*80)
-        print("💥 FATAL ERROR OCCURRED")
+        print(" FATAL ERROR OCCURRED")
         print("="*80)
         logging.error(f"Fatal error: {e}")
-        print(f"❌ Error: {e}")
-        print("\n💡 This might be due to:")
+        print(f" Error: {e}")
+        print("\n This might be due to:")
         print("   • Website blocking automated access")
         print("   • Changes in website structure")
         print("   • WebDriver issues")
         print("   • Network problems")
-        print("\n🔧 Try:")
+        print("\n Try:")
         print("   • Running the script again")
         print("   • Updating Chrome/ChromeDriver")
         print("   • Using a VPN if access is blocked")
