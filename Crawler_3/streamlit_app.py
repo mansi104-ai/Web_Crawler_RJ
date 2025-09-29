@@ -501,7 +501,7 @@ def render_website_cards():
                         st.session_state[f'run_request_{site}'] = True
                         # st.rerun()
             else:
-                if st.button(f"⏹️ Stop {site.title()}", key=f"stop_{site}", width='stretch'):
+                if st.button(f"⏹️ Stop {site.title()}", key=f"stop_{site}"):
                     if st.session_state.current_process:
                         st.session_state.current_process.terminate()
                     st.session_state.scraping_status[site]['status'] = 'stopped'
