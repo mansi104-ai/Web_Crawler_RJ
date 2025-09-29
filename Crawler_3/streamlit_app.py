@@ -36,7 +36,7 @@ def save_to_history(entry):
 # Custom CSS
 st.markdown("""
 <style>
-    .main {background:white; padding: 2rem;}
+    .main {background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 2rem;}
     .stButton>button {
         width: 100%;
         background: white;
