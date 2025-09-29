@@ -36,7 +36,7 @@ def save_to_history(entry):
 # Custom CSS
 st.markdown("""
 <style>
-    .main {background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 2rem;}
+    .main {background:white; padding: 2rem;}
     .stButton>button {
         width: 100%;
         background: white;
@@ -86,7 +86,7 @@ def run_scraper(site):
         start_time = datetime.now()
         
         # Show the command being run
-        cmd = [sys.executable, 'app.py', '--site', site]
+        cmd = [sys.executable,'Crawler_3', 'app.py', '--site', site]
         st.code(' '.join(cmd), language='bash')
         
         # Create a placeholder for output
