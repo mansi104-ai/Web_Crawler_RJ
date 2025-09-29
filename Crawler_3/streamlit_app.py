@@ -495,7 +495,7 @@ def render_website_cards():
             
             # Action button
             if status != 'running':
-                if st.button(f"🚀 Start {site.title()}", key=f"btn_{site}", width='stretch'):
+                if st.button(f"🚀 Start {site.title()}", key=f"btn_{site}"):
                     with st.spinner(f'Starting {site} scraper...'):
                         # Set status to running immediately
                         st.session_state.scraping_status[site] = {
