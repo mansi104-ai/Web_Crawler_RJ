@@ -506,7 +506,7 @@ def render_website_cards():
                         st.success(f"Started {site} scraper! Check status below.")
                         # Use session state to track request instead of threading
                         st.session_state[f'run_request_{site}'] = True
-                        st.rerun()
+                        # st.rerun()
             else:
                 if st.button(f"⏹️ Stop {site.title()}", key=f"stop_{site}", width='stretch'):
                     if st.session_state.current_process:
@@ -688,7 +688,7 @@ def render_settings():
         if auto_refresh:
             refresh_interval = st.slider("Refresh interval (seconds)", 1, 10, 3)
             time.sleep(refresh_interval)
-            st.rerun()
+            # st.rerun()
         
         # Clear history button
         if st.button("🗑️ Clear History"):
@@ -696,7 +696,7 @@ def render_settings():
             if os.path.exists('scraping_history.json'):
                 os.remove('scraping_history.json')
             st.success("History cleared!")
-            st.rerun()
+            # st.rerun()
         
         # System info
         st.markdown("### ℹ️ System Info")
