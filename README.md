@@ -1,4 +1,4 @@
-# RealEstateCrawler — 99acres-only edition (with shared commons)
+# RealEstateCrawler — 99acres-magicbricks-nobroker (with shared commons)
 
 This document provides a **complete, runnable crawler** focused on **99acres.com**, while keeping the common engine/parsing/writer files reusable for other sites. The project is arranged so you can later copy the `site_99acres.py` adapter and create `site_magicbricks.py` / `site_nobroker.py` with minimal changes.
 
